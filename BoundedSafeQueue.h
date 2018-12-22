@@ -11,14 +11,14 @@
 
 
 template<typename T>
-class SafeQueue
+class BoundedSafeQueue
 {
 
 public:
 
-    explicit SafeQueue (size_t capacity);
+    explicit BoundedSafeQueue (size_t bound);
 
-    ~SafeQueue ();
+    ~BoundedSafeQueue ();
 
     void push (const T &item);
 
@@ -28,7 +28,7 @@ public:
 
 private:
 
-    size_t              m_capacity;
+    size_t              m_bound;
     size_t              m_size;
 
     std::queue<T>       m_queue;
@@ -38,16 +38,29 @@ private:
     pthread_cond_t      m_nonfull;
 
     // prevent copying
-    SafeQueue(const SafeQueue& safeQueue);
-    SafeQueue& operator=(const SafeQueue& safeQueue);
+    BoundedSafeQueue(const BoundedSafeQueue& safeQueue);
+    BoundedSafeQueue& operator=(const BoundedSafeQueue& safeQueue);
+
+    bool isFull() const;
+    bool isEmpty() const;
 
 };
 
 
+template <typename T>
+inline bool BoundedSafeQueue<T>::isFull () const
+{ return m_size == m_bound; }
+
+
+template <typename T>
+inline bool BoundedSafeQueue<T>::isEmpty () const
+{ return m_size == 0; }
+
+
 template<typename T>
-SafeQueue<T>::
-SafeQueue (size_t capacity)
-        :m_capacity (capacity), m_size (0)
+BoundedSafeQueue<T>::
+BoundedSafeQueue (size_t bound)
+        :m_bound (bound), m_size (0)
 {
     pthread_mutex_init (&m_mutex, NULL);
     pthread_cond_init (&m_nonempty, NULL);
@@ -56,8 +69,8 @@ SafeQueue (size_t capacity)
 
 
 template<typename T>
-SafeQueue<T>::
-~SafeQueue ()
+BoundedSafeQueue<T>::
+~BoundedSafeQueue ()
 {
     pthread_mutex_destroy (&m_mutex);
     pthread_cond_destroy (&m_nonfull);
@@ -66,38 +79,48 @@ SafeQueue<T>::
 
 
 template<typename T>
-void SafeQueue<T>::
+void BoundedSafeQueue<T>::
 push (const T &item)
 {
+    // acquire lock and while full: wait
+    // at the nonfull queue till consumer takes
+    // an item
     pthread_mutex_lock (&m_mutex);
-    while (m_size == m_capacity) pthread_cond_wait (&m_nonfull, &m_mutex);
+    while (isFull ()) pthread_cond_wait (&m_nonfull, &m_mutex);
 
     m_queue.push (item);
     ++m_size;
 
+    // signal to waiting consumers queue
+    // that an item was produced
     pthread_cond_signal (&m_nonempty);
     pthread_mutex_unlock (&m_mutex);
 }
 
 
 template<typename T>
-void SafeQueue<T>::
+void BoundedSafeQueue<T>::
 pop (T &item)
 {
+    // acquire lock, then while empty:
+    // wait at the nonempty queue till
+    // a producer adds an item
     pthread_mutex_lock (&m_mutex);
-    while (m_size == 0) pthread_cond_wait (&m_nonempty, &m_mutex);
+    while (isEmpty ()) pthread_cond_wait (&m_nonempty, &m_mutex);
 
     item = m_queue.front ();
     m_queue.pop ();
     --m_size;
 
+    // signal to waiting producers that
+    // an item was consumed
     pthread_cond_signal (&m_nonfull);
     pthread_mutex_unlock (&m_mutex);
 }
 
 
 template<typename T>
-bool SafeQueue<T>::
+bool BoundedSafeQueue<T>::
 empty () const
 {
     return m_queue.empty ();

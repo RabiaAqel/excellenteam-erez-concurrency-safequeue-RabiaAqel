@@ -1,12 +1,12 @@
 #include <iostream>
-#include "SafeQueue.h"
+#include "BoundedSafeQueue.h"
 
 int main ()
 {
     std::cout << "Hello, World!" << std::endl;
 
 
-    SafeQueue<int> safeQueue (5);
+    BoundedSafeQueue<int> safeQueue (5);
 
     safeQueue.push (1);
     safeQueue.push (2);
